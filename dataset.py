@@ -3,11 +3,11 @@ import glob
 
 import numpy as np 
 import torch
-from torch.utils.data import Dataset
 from trainer import Normalizer
 
 from bodymodel import BodyModel
-    
+from parameters import DataParameters
+
 class PrepareBodyModel:
     def __init__(self, bm:BodyModel, num_bones) -> None:
         vertices_per_bone= self.get_vertices_per_bone(bm.lbs_weights)[:num_bones]
@@ -19,35 +19,34 @@ class PrepareBodyModel:
     
     def get_pcas_per_bone(self, vertices_per_bone, posedirs):
         # given a set of vertex ids find the corresponding pcas
-        pca_per_bone= []
+        pcas_per_bone= []
         for vertex_ids_per_bone in vertices_per_bone:
             vertices= np.zeros((10475, 3))
             vertices[vertex_ids_per_bone]= 100
             pca= np.dot(posedirs.reshape(-1, 486).T, vertices.flatten()) 
             pca_ids_per_bone= np.nonzero(pca)[0]
-            pca_per_bone.append(pca_ids_per_bone)
-        return pca_per_bone 
+            pcas_per_bone.append(pca_ids_per_bone)
+        return pcas_per_bone 
 
 
-class DatasetBase(Dataset):
-    def __init__(self, params) -> None:
-        super().__init__() 
-        self.params= params 
+from torch_geometric.data import Dataset
+from utils import Data
 
-class DFaust_(DatasetBase):
-    def __init__(self, params) -> None:
-        super().__init__(params)
-        pass 
+#todo check the requirements of the torchgeometric dataset class 
+class DFaust_(Dataset):
+    def __init__(self, params:DataParameters) -> None:
+        self.params= params
+        super().__init__(params.data_dir)
+         
     
     @torch.no_grad()
     def process(self):
         gender= self.params.gender
-        bm_path= osp.join(self.params.smpl_dir, rf"SMPLX_{gender.upper()}.npz")
-        bm= BodyModel(bm_path, num_betas=10, gender='male')
+        bm= BodyModel(self.params.bm_path, num_betas=self.params.num_betas, gender=gender)
         
-        num_bones= 24 #only considering smpl model bones
+        num_bones= self.params.num_bones # 24 only considering smpl model bones
         bm_prep= PrepareBodyModel(bm, num_bones)
-        torch.save(bm_prep.pca_per_bone, osp.join(self.processed_dir, r"pca_per_bone.pt"))
+        torch.save(bm_prep.pca_per_bone, osp.join(self.processed_dir, rf"pca_per_{num_bones}_bones.pt"))
         
         subjects = [osp.basename(s_dir) for s_dir in sorted(glob.glob(osp.join(self.params.data_dir, '*')))]
 
@@ -90,11 +89,12 @@ class DFaust_(DatasetBase):
                 for i in range(batch_size):
 
                     file_name= osp.join(self.processed_dir, rf"data_{sample}.pt")
-                    torch.save({"target_deformations": target_deformations, 
-                                "transformations": transformations,
-                                "betas":betas}, file_name)
+                    torch.save(Data(transformations=transformations, target_deformations=target_deformations, betas=betas), file_name)
                     sample+=1
 
+        torch.save({'input_norm': input_norm,
+                    'output_norm': output_norm}, 
+                    osp.join(self.processed_dir, r"norms.pt"))
                 
     def get(self, idx):
         dir= osp.join(self.processed_dir, rf"data_{str(idx)}.pt")
@@ -108,4 +108,4 @@ class DFaust_(DatasetBase):
 
     @property
     def processed_dir(self):
-        return osp.join(self.params.data_dir, "processed", rf"{self.params.gender}")
+        return osp.join(self.params.data_dir, "processed", self.params.gender)

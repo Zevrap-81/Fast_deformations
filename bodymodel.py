@@ -8,10 +8,11 @@ import torch.nn.functional as F
 
 from smplx.lbs import batch_rigid_transform, batch_rodrigues, vertices2joints 
 
-from smplx.utils import (
-    Struct, to_np, to_tensor, Tensor)
+from smplx.utils import (Struct, to_np, to_tensor, Tensor)
 
 from smplx.vertex_ids import vertex_ids as VERTEX_IDS
+
+from utils import Data
 
 
 class BodyModel(nn.Module):
@@ -125,7 +126,6 @@ class BodyModel(nn.Module):
 
         J_transformed, T = batch_rigid_transform(rot_mats, J, self.parents, dtype=self.dtype)
         
-
         v_posed= v_shaped
 
         if blend_pose:
@@ -138,11 +138,11 @@ class BodyModel(nn.Module):
         
         return v_posed, J_transformed, T 
 
-    def forward_skinning(self, T, v, W=None, batch_size=1):
+    def forward_skinning(self, T, v_posed, W=None, batch_size=1):
         if W is None:
             W= self.lbs_weights
             W= W.unsqueeze(0).expand(batch_size, -1, -1)
-        return lbs(W, T, v)
+        return lbs(W, T, v_posed)
          
 
     def forward(
@@ -151,11 +151,11 @@ class BodyModel(nn.Module):
         body_pose: Optional[Tensor] = None,
         global_orient: Optional[Tensor] = None,
         trans: Optional[Tensor] = None,
-        blend_pose: bool = True, 
+        blend_pose: bool = False, 
         weights: Optional[Tensor] = None,
         batch_size: int = 1,
         **kwargs
-    ) -> Struct:
+    ):
 
         # If no shape and pose parameters are passed along, then use the
         # ones from the module
@@ -169,11 +169,11 @@ class BodyModel(nn.Module):
             vertices += trans.unsqueeze(dim=1)
             T[..., -1][..., 0:3]+= trans.unsqueeze(dim=1)
 
-        output = Struct(vertices=vertices,
+        output = Data(  vertices=vertices,
                         global_orient=global_orient,
                         body_pose=body_pose,
                         joints=joints,
-                        betas=betas, 
+                        betas=betas,
                         transformations=T)
 
         return output
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     global_orient= torch.Tensor(bdata['poses'][i:i+b, :3]).reshape(b, 1, 3)
     
     model.betas= betas
-    output= model( body_pose=body_pose, global_orient=global_orient, batch_size=b)
+    output= model( body_pose=body_pose, global_orient=global_orient, batch_size=b, blend_pose=True)
     vertices = output.vertices.detach().cpu().numpy().squeeze()
     faces= model.faces
     from visualize import visualize_with_open3d
