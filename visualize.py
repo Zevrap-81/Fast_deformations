@@ -22,7 +22,7 @@ def visualize_with_open3d(vertices, faces):
                 vis.update_geometry(mesh)
                 vis.update_renderer()
                 vis.poll_events()
-                # time.sleep(0.05)
+                time.sleep(0.1)
 
         def end(vis):
             vis.destroy_window()

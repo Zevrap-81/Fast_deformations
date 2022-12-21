@@ -24,10 +24,10 @@ class BodyModel(nn.Module):
     def __init__(
         self, model_path: str,
         num_betas: int = 10,
-        dtype=torch.float32,
         gender: str = 'neutral',
-        vertex_ids: Dict[str, int] = None,
         batch_size: int = None,
+        dtype=torch.float32,
+        vertex_ids: Dict[str, int] = None,
         **kwargs
     ) -> None:
         ''' SMPL model constructor '''
@@ -87,7 +87,10 @@ class BodyModel(nn.Module):
         self.global_orient= None
         self.body_pose= None 
 
-        self.betas = torch.zeros([1, self.num_betas], dtype=self.dtype)
+        kwargs= dict(dtype=self.dtype)
+        self.betas = torch.zeros([1, self.num_betas], **kwargs)
+        self.global_orient= torch.zeros([batch_size, 3], **kwargs)
+        self.body_pose= torch.zeros([batch_size, self.NUM_BODY_JOINTS * 3], **kwargs)
 
     def forward_shape(
         self, betas=None, batch_size=1):
@@ -157,9 +160,6 @@ class BodyModel(nn.Module):
         **kwargs
     ):
 
-        # If no shape and pose parameters are passed along, then use the
-        # ones from the module
-
         v_shaped, joints= self.forward_shape(betas, batch_size)
         v_posed, joints, T= self.forward_pose(body_pose, global_orient, blend_pose, batch_size, v_shaped, joints)
         vertices= self.forward_skinning(T, v_posed, weights)
@@ -219,18 +219,22 @@ def lbs(W, T, v):
     return v_skinned[:, :, 0:3]
 
 if __name__ == "__main__":
-    model_path= r"C:\Users\Affu_rani\Downloads\3d_human\models_smplx_v1_1\smplx\models\smplx\SMPLX_FEMALE.npz"
-    model= BodyModel(model_path, gender='male')
-    
-    bdata= np.load(r"C:\Users\Affu_rani\Downloads\3d_human\Dataset\DFaust\50002\50002_hips_stageii.npz")
+    bdata= np.load(r"data\DFaust\50002\50002_punching_stageii.npz")
 
     i=0
     b=len(bdata['poses'])
+
+    model_path= r"C:\Users\Affu_rani\Downloads\3d_human\models_smplx_v1_1\smplx\models\smplx\SMPLX_FEMALE.npz"
+    model= BodyModel(model_path, gender='male', batch_size=b)
+    
+
     betas, body_pose= torch.Tensor(bdata['betas'][:10]).unsqueeze(0), torch.Tensor(bdata['poses'][i:i+b, 3:]).reshape(b, -1, 3)
     global_orient= torch.Tensor(bdata['poses'][i:i+b, :3]).reshape(b, 1, 3)
     
     model.betas= betas
-    output= model( body_pose=body_pose, global_orient=global_orient, batch_size=b, blend_pose=True)
+    trans= torch.Tensor(bdata['trans'][i:i+b])
+    # model.betas= betas
+    output= model( body_pose=body_pose, global_orient=global_orient, trans=trans, batch_size=b, blend_pose=True)
     vertices = output.vertices.detach().cpu().numpy().squeeze()
     faces= model.faces
     from visualize import visualize_with_open3d

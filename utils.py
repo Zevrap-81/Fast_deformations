@@ -9,7 +9,7 @@
 #     #             self.betas.to(device))
 # Data.to= to
 
-from torch_geometric.data import Dataset, Data as Data_
+from torch_geometric.data import Data as Data_
 class Data(Data_):  
     'To force classical batching'
     def __cat_dim__(self, *args, **kwargs):

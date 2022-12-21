@@ -4,7 +4,6 @@ from typing import Optional
 
 import torch 
 import torch.nn as nn 
-from trainer import Normalizer
 
 from bodymodel import BodyModel
 from parameters import Parameters, HyperParameters
@@ -43,7 +42,8 @@ class SkinningModel(nn.Sequential):
         
     def forward(self, transformations, posedirs):
         batch_size= transformations.size(0)
-        output= torch.zeros((batch_size, self.params.num_tethas), requires_grad=True, device=transformations.device) #, dtype=self.dtype
+        kwargs= dict( device=transformations.device, dtype=transformations.dtype)
+        output= torch.zeros((batch_size, self.params.data.num_tethas), **kwargs)
         
         #todo use multiprocessing to run all models in parallel
         for i in range(self.params.data.num_bones):
@@ -51,8 +51,8 @@ class SkinningModel(nn.Sequential):
             T_i= transformations[:, i]
             pca_ids= self.pcas_per_bone[i]
             output[:,pca_ids]+= model_i(T_i)
-        
-        output= torch.einsum('bm,ndm->bnd', output, posedirs)  #change this to bmm later
+            
+        output= torch.matmul(output, posedirs).view(batch_size, -1, 3)
         return output
     
 
@@ -60,32 +60,45 @@ class Deformer(BodyModel):
     # Do inference
     input_norm, output_norm= None, None
 
-    def __init__(self, model_ckpt, params_ckpt) -> None:
-        self.params= Parameters.load_from_checkpoint(params_ckpt)
-        super().__init__(self.params.bm_path, num_betas=self.params.num_betas, gender=self.params.data.gender)
-        
-        path= osp.join(self.params.data.data_dir, "processed", 
+    def __init__(self, params_ckpt=None, model_ckpt=None, params=None) -> None:
+        self.params= params
+        if params_ckpt:
+            self.params= Parameters.load_from_checkpoint(params_ckpt)
+
+        if self.params is None:
+            raise Exception("Please provide checkpoints or parameters themselves")
+
+        super().__init__(self.params.data.bm_path, num_betas=self.params.data.num_betas, gender=self.params.data.gender)
+
+        path= osp.join(self.params.data.data_dir, "DFaust_processed", 
               self.params.data.gender, rf"pca_per_{self.params.data.num_bones}_bones.pt")
-        pcas_per_bone= torch.load(path).to(self.params.hyper.device)
+        pcas_per_bone= torch.load(path)
 
-        self.model= SkinningModel(self.params, pcas_per_bone)
-        self.model.load_state_dict(model_ckpt)
+        if model_ckpt:
+            self.model= SkinningModel(self.params, pcas_per_bone)
+            self.model.load_state_dict(model_ckpt)
+        else:
+            raise Exception("Please provide model checkpoint")
 
+        self.model.to(self.params.hyper.device)
 
     def forward_skinning(self, T, v_posed, W=None, batch_size=1):
 
         l_disp= super().forward_skinning(T, v_posed, W, batch_size)
 
         if self.input_norm is None or self.output_norm is None:
-            norms= torch.load(osp.join(self.params.data.data_dir, self.params.data.gender, r'norms.pt'))
+            norms= torch.load(osp.join(self.params.data.data_dir, "DFaust_processed", 
+                              self.params.data.gender, r'norms.pt'))
             self.input_norm= norms['input_norm']
             self.output_norm= norms['output_norm']
 
         transformations= T[:, :self.params.data.num_bones].view(-1, self.params.data.num_bones, 16)
-        non_l_disp= self.model(transformations, self.posedirs)
-        non_l_disp= self.output_norm(non_l_disp, inverse=True)
+        transformations= self.input_norm(transformations).to(self.params.hyper.device)
+        posedirs= self.posedirs.to(self.params.hyper.device)
+        non_l_disp= self.model(transformations, posedirs)
+        non_l_disp= self.output_norm(non_l_disp, inverse=True).cpu()
         
-        disp= l_disp + non_l_disp #additive model
+        disp= l_disp + non_l_disp       #additive model
         return disp
 
 
@@ -100,6 +113,7 @@ class Deformer(BodyModel):
         batch_size: int = 1,
         **kwargs
     ):
+
         # manually set blend_pose to false
-        return super().forward(betas, body_pose, global_orient, trans, weights,
-                               batch_size, blend_pose=False, **kwargs)
+        return super().forward(blend_pose=False, betas=betas, body_pose=body_pose, global_orient=global_orient, trans=trans, weights=weights,
+                               batch_size=batch_size, **kwargs)
