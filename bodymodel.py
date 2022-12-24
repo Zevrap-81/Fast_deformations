@@ -1,4 +1,3 @@
-from collections import namedtuple
 from typing import Optional, Dict
 import os.path as osp 
 
@@ -8,13 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from smplx.lbs import batch_rigid_transform, batch_rodrigues, vertices2joints 
-
 from smplx.utils import (Struct, to_np, to_tensor, Tensor)
-
 from smplx.vertex_ids import vertex_ids as VERTEX_IDS
-
-# Body_Data= namedtuple('Body_Data', ['vertices', 'global_orient',
-#                                     'body_pose',])
 
 from utils import Data
 

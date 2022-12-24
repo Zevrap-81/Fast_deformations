@@ -21,6 +21,10 @@ class Data(object):
         for key in self._fields:
             setattr(self, key, getattr(self, key).to(device))
         return self
+    
+    @property
+    def device(self):
+        return getattr(self, list(self._fields)[0]).device
 
 def collate_fn(data):
     elem= data[0]
@@ -30,3 +34,17 @@ def collate_fn(data):
     for key in keys:
         out[key]= torch.cat([getattr(d, key) for d in data])
     return elem.__class__(**out)
+
+class DataLoader:
+    #to load all data into gpu once and use it all the time
+    def __init__(self, dataset=None, batch_size=None, collate_fn= collate_fn, device='cpu') -> None:
+        self.dataset= dataset   
+        self.collate= collate_fn
+        self.device= device
+        self.data= None
+    
+    def __iter__(self):
+        if self.data is None:   # redundant
+            self.data= self.collate(self.dataset[:]).to(self.device)
+        yield self.data
+    

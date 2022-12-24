@@ -38,8 +38,9 @@ class DFaustDataset(Dataset):
 
     input_norm, output_norm= None, None
 
-    def __init__(self, params:DataParameters) -> None:
+    def __init__(self, params:DataParameters, train=True) -> None:
         self.params= params
+        self.train= train
         super().__init__(params.data_dir)
          
     
@@ -95,30 +96,32 @@ class DFaustDataset(Dataset):
                 file_name= osp.join(self.processed_dir, rf"data_{sample}.pt")
                 torch.save(Data(transformations=transformations, target_deformations=target_deformations), file_name)
                 file_name=  osp.join(self.processed_dir, rf"body_data_{sample}.pt")
-                torch.save(Data(betas=betas.expand(batch_size, -1), poses=poses), file_name)
+                torch.save(Data(betas=betas.expand(batch_size, -1), poses=poses, trans=trans), file_name)
+
                 sample+=1
-                
-                # for i in range(batch_size):
-                #     file_name= osp.join(self.processed_dir, rf"data_{sample}.pt")
-                #     torch.save(Data(transformations=transformations[i], target_deformations=target_deformations[i], betas=betas, poses=poses[i]), file_name)
-                #     sample+=1
 
         torch.save({'input_norm': input_norm,
                     'output_norm': output_norm}, 
                     osp.join(self.processed_dir, r"norms.pt"))
                 
     def get(self, idx):
-        dir= osp.join(self.processed_dir, rf"data_{str(idx)}.pt")
-        data= torch.load(dir)
+        if self.train:
+            dir= osp.join(self.processed_dir, rf"data_{str(idx)}.pt")
+            data= torch.load(dir)
 
-        if self.input_norm is None or self.output_norm is None:
-            norms= torch.load(osp.join(self.processed_dir, r'norms.pt'))
-            self.input_norm= norms['input_norm']
-            self.output_norm= norms['output_norm']
-        
-        data.transformations= self.input_norm(data.transformations)
-        data.target_deformations= self.output_norm(data.target_deformations)
-        return data
+            if self.input_norm is None or self.output_norm is None:
+                norms= torch.load(osp.join(self.processed_dir, r'norms.pt'))
+                self.input_norm= norms['input_norm']
+                self.output_norm= norms['output_norm']
+            
+            data.transformations= self.input_norm(data.transformations)
+            data.target_deformations= self.output_norm(data.target_deformations)
+            return data
+
+        else:
+            dir= osp.join(self.processed_dir, rf"body_data_{str(idx)}.pt")
+            data= torch.load(dir)
+            return data
 
     def len(self):
         return len(glob.glob(osp.join(self.processed_dir, r"data_*.pt") ))
@@ -133,24 +136,26 @@ class DFaustDataset(Dataset):
     @property
     def processed_dir(self):
         return osp.join(self.params.data_dir, "DFaust_processed", self.params.gender)
-
+   
 
 if __name__ == "__main__":
     data_params= DataParameters()
     data_params.gender= 'male'
     dataset= DFaustDataset(data_params)
 
+    d= dataset[0]
+    print(d.transformations[0])
+    print(d.transformations[1])
+
+    print(d.transformations.min(), d.transformations.max())
     ## Testing dataset class functionality
     # model_path= r"C:\Users\Affu_rani\Downloads\3d_human\models_smplx_v1_1\smplx\models\smplx\SMPLX_FEMALE.npz"
     # model= BodyModel(model_path, gender='male')
     
-    from torch.utils.data import DataLoader
-    from utils import collate_fn
-    # from torch_geometric.loader import DataLoader
-    dataloader= DataLoader(dataset, 1000,  collate_fn=collate_fn, num_workers=1)
-
+    from utils import DataLoader
+    dataloader= DataLoader(dataset, device='cuda:0')
     data= next(iter(dataloader))
-    print(data.transformations.device)
+    print(data.device)
     # poses= data.poses
     # betas= data.betas
     # body_pose= poses[:, 3:]

@@ -60,14 +60,8 @@ class Deformer(BodyModel):
     # Do inference
     input_norm, output_norm= None, None
 
-    def __init__(self, params_ckpt=None, model_ckpt=None, params=None) -> None:
+    def __init__(self, params=None, model_ckpt=None) -> None:
         self.params= params
-        if params_ckpt:
-            self.params= Parameters.load_from_checkpoint(params_ckpt)
-
-        if self.params is None:
-            raise Exception("Please provide checkpoints or parameters themselves")
-
         super().__init__(self.params.data.bm_path, num_betas=self.params.data.num_betas, gender=self.params.data.gender)
 
         path= osp.join(self.params.data.data_dir, "DFaust_processed", 
