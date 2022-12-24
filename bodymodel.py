@@ -1,3 +1,4 @@
+from collections import namedtuple
 from typing import Optional, Dict
 import os.path as osp 
 
@@ -12,8 +13,10 @@ from smplx.utils import (Struct, to_np, to_tensor, Tensor)
 
 from smplx.vertex_ids import vertex_ids as VERTEX_IDS
 
-from utils import Data
+# Body_Data= namedtuple('Body_Data', ['vertices', 'global_orient',
+#                                     'body_pose',])
 
+from utils import Data
 
 class BodyModel(nn.Module):
 

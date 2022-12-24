@@ -68,7 +68,8 @@ class DFaustDataset(Dataset):
                 continue
 
             betas= torch.Tensor(np.load(shape_dir, allow_pickle=True)['betas'][:self.params.num_betas])
-            bm.betas= betas.unsqueeze(0)
+            betas= betas.unsqueeze(0)
+            bm.betas= betas
 
             for s_dir in glob.glob(osp.join(subject_dir, rf'{subject}_*.npz')):
                 subject_data= np.load(s_dir, allow_pickle=True)
@@ -91,10 +92,16 @@ class DFaustDataset(Dataset):
                 target_deformations= body.vertices - linear_body.vertices
                 output_norm.fit(target_deformations)
 
-                for i in range(batch_size):
-                    file_name= osp.join(self.processed_dir, rf"data_{sample}.pt")
-                    torch.save(Data(transformations=transformations[i], target_deformations=target_deformations[i], betas=betas, poses=poses[i]), file_name)
-                    sample+=1
+                file_name= osp.join(self.processed_dir, rf"data_{sample}.pt")
+                torch.save(Data(transformations=transformations, target_deformations=target_deformations), file_name)
+                file_name=  osp.join(self.processed_dir, rf"body_data_{sample}.pt")
+                torch.save(Data(betas=betas.expand(batch_size, -1), poses=poses), file_name)
+                sample+=1
+                
+                # for i in range(batch_size):
+                #     file_name= osp.join(self.processed_dir, rf"data_{sample}.pt")
+                #     torch.save(Data(transformations=transformations[i], target_deformations=target_deformations[i], betas=betas, poses=poses[i]), file_name)
+                #     sample+=1
 
         torch.save({'input_norm': input_norm,
                     'output_norm': output_norm}, 
@@ -117,7 +124,7 @@ class DFaustDataset(Dataset):
         return len(glob.glob(osp.join(self.processed_dir, r"data_*.pt") ))
 
     def processed_file_names(self):
-        return [r"data_00.pt", rf"data_{self.len()-1}.pt"] 
+        return [r"data_0.pt", rf"data_{self.len()-1}.pt"] 
 
     @property
     def data_dir(self):
@@ -130,17 +137,20 @@ class DFaustDataset(Dataset):
 
 if __name__ == "__main__":
     data_params= DataParameters()
+    data_params.gender= 'male'
     dataset= DFaustDataset(data_params)
-    print(dataset[0])
 
     ## Testing dataset class functionality
     # model_path= r"C:\Users\Affu_rani\Downloads\3d_human\models_smplx_v1_1\smplx\models\smplx\SMPLX_FEMALE.npz"
     # model= BodyModel(model_path, gender='male')
     
+    from torch.utils.data import DataLoader
+    from utils import collate_fn
     # from torch_geometric.loader import DataLoader
-    # dataloader= DataLoader(dataset, 1000, num_workers=3)
+    dataloader= DataLoader(dataset, 1000,  collate_fn=collate_fn, num_workers=1)
 
-    # data= next(iter(dataloader))
+    data= next(iter(dataloader))
+    print(data.transformations.device)
     # poses= data.poses
     # betas= data.betas
     # body_pose= poses[:, 3:]

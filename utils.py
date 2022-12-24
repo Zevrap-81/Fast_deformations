@@ -1,16 +1,32 @@
+# from torch_geometric.data import Data as Data_
+# class Data(Data_):  
+#     'To force classical batching'
+#     def __cat_dim__(self, *args, **kwargs):
+#         return 0
 
-# from collections import namedtuple
-# Data= namedtuple('Data', ['transformations', 'deformations', 'betas'])
+import torch
+class Data(object):
+    def __init__(self, **kwargs):
+        for key, val in kwargs.items():
+            setattr(self, key, val)
+    
+    @property
+    def _fields(self):
+        return self.__dict__.keys()
 
-# def to(self, device) -> Data:
-#     return self.__class__(*[getattr(self, s).to(device) for s in self._fields])
+    def __str__(self):
+        return 'Data {' + ', '.join([f'{key}:{list(getattr(self, key).shape)}' for key in self._fields]) + '}'
 
-#     # return Data(self.transformations.to(device), self.deformations.to(device), 
-#     #             self.betas.to(device))
-# Data.to= to
+    def to(self, device):
+        for key in self._fields:
+            setattr(self, key, getattr(self, key).to(device))
+        return self
 
-from torch_geometric.data import Data as Data_
-class Data(Data_):  
-    'To force classical batching'
-    def __cat_dim__(self, *args, **kwargs):
-        return None
+def collate_fn(data):
+    elem= data[0]
+    keys= elem._fields
+
+    out= {}
+    for key in keys:
+        out[key]= torch.cat([getattr(d, key) for d in data])
+    return elem.__class__(**out)
